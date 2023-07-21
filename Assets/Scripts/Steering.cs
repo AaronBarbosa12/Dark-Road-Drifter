@@ -4,37 +4,46 @@ using UnityEngine;
 
 public class Steering : MonoBehaviour
 {
-    [SerializeField] float suspension_spring_factor = 10f;
-    [SerializeField] float suspension_damping_factor = 3f;
-    [SerializeField] float suspension_rest_distance = 3f;
-    Rigidbody car_rigidbody;
+    [Header("Suspension Settings")]
+    [SerializeField, Range(0f, 100f)] private float suspensionSpringFactor = 10f;
+    [SerializeField, Range(0f, 10f)] private float suspensionDampingFactor = 3f;
+    [SerializeField] private float suspensionRestDistance = 3f;
 
-    [SerializeField] Transform[] anchors = new Transform[4];
-    RaycastHit[] hits = new RaycastHit[4];
+    [Header("Anchor Points")]
+    [SerializeField] private Transform[] anchors = new Transform[4];
+
+    private Rigidbody carRigidbody;
 
     // Start is called before the first frame update
     void Start()
     {
-        car_rigidbody = GetComponent<Rigidbody>();
+        carRigidbody = GetComponent<Rigidbody>();
     }
 
     void FixedUpdate()
     {
-        for (int i = 0; i < 4; i++)
-            ApplySuspension(anchors[i], hits[i]);
+        ApplySuspension();
     }
 
-    void ApplySuspension(Transform anchor, RaycastHit hit){
-        if(Physics.Raycast(anchor.position, -anchor.up, out hit)){
-            // Calculate suspension force
-            float distanceFromGround = hit.distance;
-            Vector3 suspension_force = transform.up*suspension_spring_factor*(suspension_rest_distance - distanceFromGround);
-            
-            // Calculate Damping Force
-            Vector3 suspension_damping_force_val = -suspension_damping_factor*car_rigidbody.velocity.y*Vector3.up;
+    /// <summary>
+    /// Apply suspension force and damping to the car.
+    /// </summary>
+    private void ApplySuspension()
+    {
+        RaycastHit hit;
+        for (int i = 0; i < anchors.Length; i++)
+        {
+            if (Physics.Raycast(anchors[i].position, -anchors[i].up, out hit))
+            {
+                // Calculate suspension force
+                float distanceFromGround = hit.distance;
+                Vector3 suspensionForce = transform.up * suspensionSpringFactor * (suspensionRestDistance - distanceFromGround);
 
-            car_rigidbody.AddForceAtPosition((suspension_force+suspension_damping_force_val), anchor.position, ForceMode.Acceleration);
+                // Calculate damping force
+                Vector3 suspensionDampingForce = -suspensionDampingFactor * carRigidbody.velocity.y * Vector3.up;
+
+                carRigidbody.AddForceAtPosition((suspensionForce + suspensionDampingForce), anchors[i].position, ForceMode.Acceleration);
+            }
         }
     }
-
 }
