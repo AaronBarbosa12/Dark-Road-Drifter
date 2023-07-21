@@ -2,7 +2,7 @@
 
 <a name="about"></a>
 ## About
-This engine is being created with the purpose of simulating combinatorical strategies for variations of the 15-Puzzle problem in C++.
+This is a 3D vehicle combat game made in Unity.
 
 <a name="list-of-features"></a>
 ## List of Features
