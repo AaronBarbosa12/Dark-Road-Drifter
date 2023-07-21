@@ -1,4 +1,6 @@
 # Dark-Road-Drifter
+[![trello_1](https://img.shields.io/badge/Trello-brightgreen)](https://trello.com/b/AbCHOzsj/dark-road-drifter)
+![date](https://img.shields.io/badge/Build%20Date-1.0.1-informational)
 
 <a name="about"></a>
 ## About
