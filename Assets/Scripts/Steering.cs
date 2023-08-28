@@ -4,18 +4,19 @@ using UnityEngine;
 
 public class Steering : MonoBehaviour
 {
-    [Header("Suspension Settings")]
+    [Header("Car Suspension Settings")]
     [SerializeField, Range(0f, 10000f)] private float suspensionSpringFactor = 5000f;
     [SerializeField, Range(0f, 1000f)] private float suspensionDampingFactor = 300f;
     [SerializeField] private float suspensionRestDistance = 3f;
-    [SerializeField] private float wheelRadius = 1f;
-    [SerializeField] private float wheelMass = 6.5f;
-    [SerializeField] private bool rearWheelDrive = true;
+    [SerializeField] private float wheelRadius = 0.5f;
+    [SerializeField] private float wheelMass = 50f;
 
     [Header("Acceleration Settings")]
-    [SerializeField, Range(0f, 5000)] private float engineFactor = 2000;
+    [SerializeField, Range(0f, 10000)] private float maxVelocity = 1000f;
+    [SerializeField, Range(0f, 20000)] private float maxTorque= 4000f;
+    public AnimationCurve accelerationCurve;
 
-    [Header("Anchor Points")]
+    [Header("Wheel Anchor Points")]
     [SerializeField] private Transform[] anchors = new Transform[4];
 
     private Rigidbody carRigidbody;
@@ -29,77 +30,121 @@ public class Steering : MonoBehaviour
         objTransform = GetComponent<Transform>();
         mass = carRigidbody.mass;
     }
-
+    
     void FixedUpdate()
     {
-        ApplySuspension();
-        ApplySteering();
+        ApplyForces();
     }
 
     /// <summary>
-    /// Apply suspension force and damping to the car.
+    /// Apply acceleration, traction and suspension forces to car
     /// </summary>
-    private void ApplySuspension()
+    private void ApplyForces()
     {
-        RaycastHit hit;
-        for (int i = 0; i < anchors.Length; i++)
-        {
-            var currentAnchor = anchors[i];
-            if (Physics.Raycast(currentAnchor.position, -currentAnchor.up, out hit))
-            {
+        Vector3 steeringForce;
+        Vector3 tractionForce;
+        Vector3 suspensionForce;
 
-                Vector3 springDir = currentAnchor.up;
-                
-                // Calculate suspension force
-                float distanceFromGround = hit.distance - wheelRadius;
-                float suspensionExtension = (suspensionRestDistance - distanceFromGround);
-                Vector3 suspensionForce = springDir * suspensionSpringFactor * suspensionExtension;
-
-                // Calculate damping force
-                Vector3 tireWorldVel = carRigidbody.GetPointVelocity(currentAnchor.position);
-                float velY = Vector3.Dot(springDir, tireWorldVel);
-                Vector3 suspensionDampingForce = -springDir * suspensionDampingFactor * velY;
-
-                carRigidbody.AddForceAtPosition((suspensionForce + suspensionDampingForce), currentAnchor.position);
-            }
-        }
-    }
-
-
-    /// <summary>
-    /// Apply acceleration force and traction force to the car.
-    /// </summary>
-    private void ApplySteering()
-    {
-        float force = Input.GetAxis("Vertical")*engineFactor;
-        float radians = Input.GetAxis("Horizontal") *  Mathf.PI/2; // Convert input to radians (2 * pi is a full circle)
-       
-        Vector3 localInputSteeringDir = new Vector3(Mathf.Sin(radians), 0f,  Mathf.Cos(radians));
-        Vector3 worldInputSteeringDir = objTransform.TransformDirection(localInputSteeringDir);
-        
+        float pedalInput = Input.GetAxis("Vertical");
         for (int i = 0; i < 4; i++)
         {
             var currentAnchor = anchors[i];
 
-            // calculate steering force
-            Vector3 steeringForce = new Vector3(0f, 0f, 0f);
+            // Calculate steering Force (front wheel drive)
             if (i < 2){
-                steeringForce = force * worldInputSteeringDir;
+                steeringForce = calcSteeringForce(currentAnchor, pedalInput);
             }
-
-            // calculate traction force
-            Vector3 tireTractionDir = currentAnchor.right;
-            Vector3 tireWorldVel = carRigidbody.GetPointVelocity(currentAnchor.position);
-            Vector3 tractionForce = -0.2f*tireTractionDir*wheelMass*Vector3.Dot(tireTractionDir, tireWorldVel)/Time.fixedDeltaTime;
+            else{
+                steeringForce = new Vector3(0, 0f, 0f);
+            }
             
-            // Apply Force
-            Vector3 totalForce = steeringForce + tractionForce;
-            carRigidbody.AddForceAtPosition(totalForce, currentAnchor.position);
+            tractionForce = calcTractionForce(currentAnchor, currentAnchor.right);
+            suspensionForce = calcSuspensionForce(currentAnchor);
 
-            // Visualize the force as a ray starting from the GameObject's position
+            // Apply all forces
+            Vector3 totalForce = steeringForce  + suspensionForce + tractionForce;
+            carRigidbody.AddForceAtPosition(totalForce, currentAnchor.position);            
             Debug.DrawRay(currentAnchor.position, steeringForce, Color.green);
-            Debug.DrawRay(currentAnchor.position, tractionForce, Color.red);
-            Debug.DrawRay(currentAnchor.position, carRigidbody.GetPointVelocity(currentAnchor.position), Color.blue);
         }
+    }
+
+    /// <summary>
+    /// Calculate traction force on the given wheel.
+    /// </summary>
+    private Vector3 calcTractionForce(Transform currentAnchor, Vector3 tractionDir){
+        Vector3 tireWorldVel = carRigidbody.GetPointVelocity(currentAnchor.position);
+        float tractionDirVel = Vector3.Dot(tireWorldVel, tractionDir);
+        Vector3 tractionForce = (-0.2f * tractionDir * wheelMass * tractionDirVel)/Time.fixedDeltaTime;
+        return tractionForce;
+    }
+
+    /// <summary>
+    /// Apply suspension force on the given wheel.
+    /// </summary>
+    private Vector3 calcSuspensionForce(Transform currentAnchor)
+    {
+        RaycastHit hit;
+        Vector3 totalForce;
+        Vector3 springDir = currentAnchor.up;
+        
+        if (Physics.Raycast(currentAnchor.position, -springDir, out hit))
+        {
+            
+            // Calculate suspension force
+            float distanceFromGround = hit.distance - wheelRadius;
+            float suspensionExtension = (suspensionRestDistance - distanceFromGround);
+            Vector3 suspensionForce = springDir * suspensionSpringFactor * suspensionExtension;
+
+            // Calculate damping force
+            Vector3 tireWorldVel = carRigidbody.GetPointVelocity(currentAnchor.position);
+            float velY = Vector3.Dot(springDir, tireWorldVel);
+            Vector3 suspensionDampingForce = -springDir * suspensionDampingFactor * velY;
+
+            totalForce = suspensionForce + suspensionDampingForce;
+            return totalForce;
+        }
+        else{
+            totalForce = new Vector3(0, 0f, 0f);
+        }
+        return totalForce;
+    }
+
+    /// <summary>
+    /// Calculate acceleration force on given wheel
+    /// </summary>
+    private Vector3 calcSteeringForce(Transform currentAnchor, float pedalInput){    
+        Vector3 steeringForce;
+        float torqueFactor = 0f;
+
+        float groundPlaneVel = calcGroundPlaneVelocity(currentAnchor);
+        
+        if (pedalInput >= 0){
+            // Accelerate up until we reach max speed
+            float velocityRatio = Mathf.Abs(groundPlaneVel/maxVelocity);
+            if (0f <= velocityRatio && velocityRatio <= 1f){
+                torqueFactor = accelerationCurve.Evaluate(velocityRatio);
+            }
+            else if (velocityRatio > 1f){
+                torqueFactor = 0;
+            }
+            steeringForce = pedalInput * maxTorque * torqueFactor * currentAnchor.forward;
+        }
+        else {
+            // Brake
+            steeringForce = calcTractionForce(currentAnchor, currentAnchor.forward);
+        }
+
+        return steeringForce;
+    }
+    /// <summary>
+    /// Calculate velocity in the ground plane
+    /// </summary>
+    private float calcGroundPlaneVelocity(Transform currentAnchor){
+        Vector3 tireWorldVel = carRigidbody.GetPointVelocity(currentAnchor.position);
+        // Calculate the normal vector of the plane by taking the cross product of vectorA and vectorB
+        Vector3 planeNormal = Vector3.Cross(currentAnchor.forward, currentAnchor.right).normalized;
+        // Project the velocity vector onto the plane using vector projection formula
+        float groundPlaneVel = (tireWorldVel - Vector3.Dot(tireWorldVel, planeNormal) * planeNormal).magnitude;
+        return groundPlaneVel;
     }
 }
